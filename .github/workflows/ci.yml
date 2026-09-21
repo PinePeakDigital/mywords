@@ -1,0 +1,60 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    # A newer push to the same ref makes an in-flight check obsolete.
+    concurrency:
+      group: check-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # Typechecks as well as bundling, and produces the dist/ the deploy needs.
+      - run: npm run build
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: check
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          # Deliberately uncached: a pull-request run can write the npm cache,
+          # and this job publishes what it builds, so restoring it here would
+          # let a PR poison production. Auto-caching is off today only because
+          # package.json declares no packageManager; say it outright, or adding
+          # that field later would quietly re-enable it. The check job above
+          # caches freely — it publishes nothing.
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run build
+      - uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # v3 defaults to a wrangler that lacks assets-only Worker support.
+          wranglerVersion: "4"

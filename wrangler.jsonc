@@ -1,0 +1,9 @@
+{
+	"name": "mywords",
+	"compatibility_date": "2026-09-21",
+	"assets": {
+		"directory": "./dist"
+	},
+	// Custom domains require the zone to live in this Cloudflare account.
+	"routes": [{ "pattern": "mywords.nathanarthur.com", "custom_domain": true }]
+}
