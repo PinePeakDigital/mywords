@@ -216,7 +216,8 @@ function openEditor(source: Saved) {
         EditorView.theme({
           "&": { fontSize: "1.05rem" },
           ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.7" },
-          ".cm-content": { padding: "0" },
+          // The base theme hard-codes a black caret, invisible on dark paper.
+          ".cm-content": { padding: "0", caretColor: "var(--ink)" },
         }),
         borrowed,
         redactions,

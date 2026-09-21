@@ -3,7 +3,7 @@
 A tool for rewriting someone else's text into your own words. Paste the original,
 edit it in place, and watch how much of their wording survives.
 
-- Words still carrying the original's wording are **highlighted**; your own are not.
+- Words still carrying the original's wording are **marked**; your own are not.
 - <kbd>Ctrl/⌘</kbd>+<kbd>⇧</kbd>+<kbd>X</kbd> **redacts** the paragraph you're in, so you
   can't crib from the sentence you're replacing. Press and hold a redacted line to peek.
 - The bar fills as you go: the share of the original's words no longer present anywhere.
