@@ -71,3 +71,11 @@ test("two borrowed runs either side of a rewrite keep their offsets", () => {
   ]);
   expect(s.originalWordsRemaining).toBe(7);
 });
+
+test("punctuation-only tokens are not counted as words", () => {
+  // "one -- two" is two words, so it cannot meet a three-word threshold.
+  const s = analyze("one -- two", "one -- two");
+  expect(s.originalWordCount).toBe(2);
+  expect(s.ranges).toEqual([]);
+  expect(s.originalWordsRemaining).toBe(0);
+});

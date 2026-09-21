@@ -17,9 +17,10 @@ export type Stats = {
  */
 export const RUN_THRESHOLD = 3; // ponytail: a knob, tune once real numbers show up
 
-const countWords = (text: string) => text.split(/\s+/).filter(Boolean).length;
-
 const hasWordChar = (token: string) => /[\p{L}\p{N}]/u.test(token);
+
+const countWords = (text: string) =>
+  text.split(/\s+/).filter(hasWordChar).length;
 
 /**
  * The span of `value` running from its first word-bearing token to its last, so
@@ -35,7 +36,10 @@ function wordSpan(value: string) {
   if (first > last) return null;
   const start = tokens[first].index;
   const end = tokens[last].index + tokens[last][0].length;
-  return { start, end, words: last - first + 1 };
+  const words = tokens
+    .slice(first, last + 1)
+    .filter((token) => hasWordChar(token[0])).length;
+  return { start, end, words };
 }
 
 export function analyze(

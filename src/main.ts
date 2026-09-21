@@ -65,8 +65,17 @@ const redactions = StateField.define<Range[]>({
       if (!effect.is(toggleRedaction)) continue;
       const { from, to } = effect.value;
       const overlapping = spans.filter((s) => s.from < to && from < s.to);
+      // Un-redacting keeps whatever the toggled span didn't cover, so taking
+      // one paragraph out of a multi-paragraph redaction can't reveal the rest.
       spans = overlapping.length
-        ? spans.filter((s) => !overlapping.includes(s))
+        ? spans.flatMap((s) =>
+            overlapping.includes(s)
+              ? [
+                  ...(s.from < from ? [{ from: s.from, to: from }] : []),
+                  ...(to < s.to ? [{ from: to, to: s.to }] : []),
+                ]
+              : [s],
+          )
         : [...spans, effect.value];
     }
     return spans;
@@ -76,16 +85,22 @@ const redactions = StateField.define<Range[]>({
 const redactionDecorations = EditorView.decorations.compute(
   [redactions, "doc"],
   (state) => {
-    const lines = new Set<number>();
+    const starts = new Set<number>();
     for (const span of state.field(redactions)) {
-      for (let pos = span.from; ; ) {
-        const line = state.doc.lineAt(pos);
-        lines.add(line.from);
-        if (line.to >= span.to) break;
-        pos = line.to + 1;
+      const last = state.doc.lineAt(span.to).number;
+      for (let n = state.doc.lineAt(span.from).number; n <= last; n++) {
+        const line = state.doc.line(n);
+        // A span ending at a line's start, or starting at its end, covers no
+        // text on it — which is how un-redacting part of a span leaves the
+        // neighbouring paragraph alone. Blank lines inside a span still count,
+        // so a redacted block stays contiguous.
+        const covers =
+          span.from < line.to ||
+          (line.from === line.to && span.from <= line.from);
+        if (line.from < span.to && covers) starts.add(line.from);
       }
     }
-    const decorations: CmRange<Decoration>[] = [...lines]
+    const decorations: CmRange<Decoration>[] = [...starts]
       .sort((a, b) => a - b)
       .map((at) => redactedLine.range(at));
     return Decoration.set(decorations);
@@ -117,7 +132,10 @@ const redactParagraph = (view: EditorView) => {
   const selection = view.state.selection.main;
   const span = {
     from: paragraphAt(view.state, selection.from).from,
-    to: paragraphAt(view.state, selection.to).to,
+    // `to` is exclusive, so for a real selection it can sit on the first
+    // character of the next paragraph, which is not selected.
+    to: paragraphAt(view.state, selection.empty ? selection.to : selection.to - 1)
+      .to,
   };
   // A blank line spans nothing, and an empty span could never be toggled back
   // off: the overlap test below would not even match it against itself.
@@ -254,7 +272,11 @@ el("copy").addEventListener("click", async () => {
 
 el("restart").addEventListener("click", () => {
   if (!confirm("Discard this rewrite and start over?")) return;
-  localStorage.removeItem(STORE_KEY);
+  try {
+    localStorage.removeItem(STORE_KEY);
+  } catch {
+    // Storage denied. Reload anyway: restore() rejects what it can't read.
+  }
   location.reload();
 });
 
