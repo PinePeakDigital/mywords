@@ -16,7 +16,7 @@ _Avoid_: my text, new text, output, rewrite
 An Original paired with the Draft being written from it. Only one exists at a time.
 
 **Borrowed**:
-A span of the Draft that still carries the Original's wording — a run of consecutive words appearing in both. Highlighted in the editor.
+A span of the Draft that still carries the Original's wording — a run of consecutive words appearing in both. Marked in the editor.
 _Avoid_: original text, unchanged, untouched, plagiarised
 
 **Run threshold**:
