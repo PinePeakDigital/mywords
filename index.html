@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MyWords</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <section id="paste">
+      <h1>MyWords</h1>
+      <p>Paste the text you want to put in your own words.</p>
+      <textarea id="source" placeholder="Paste the original here…"></textarea>
+      <button id="start">Start rewriting</button>
+    </section>
+
+    <section id="rewrite" hidden>
+      <header>
+        <progress id="bar" max="100" value="0"></progress>
+        <p id="stats"></p>
+        <div class="actions">
+          <button id="redact">Toggle paragraph redaction</button>
+          <button id="copy">Copy all</button>
+          <button id="restart">Start over</button>
+        </div>
+        <p class="hint">
+          Highlighted words are still the original's. Redact the paragraph you're in
+          (<kbd>Ctrl/⌘</kbd>+<kbd>⇧</kbd>+<kbd>X</kbd>) to hide its wording while you
+          replace it, and again to bring it back; press and hold a redacted line to peek.
+        </p>
+      </header>
+      <div id="editor"></div>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

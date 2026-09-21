@@ -1,0 +1,78 @@
+:root {
+  --ink: #1a1a1a;
+  --paper: #fdfdfb;
+  --borrowed: #ffe680;
+  --muted: #6b6b6b;
+  font-family: Georgia, "Iowan Old Style", serif;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+body {
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+  max-width: 44rem;
+}
+
+h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+
+button {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+}
+
+#source {
+  display: block;
+  width: 100%;
+  min-height: 55vh;
+  margin: 1rem 0;
+  padding: 0.75rem;
+  font: inherit;
+  line-height: 1.6;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 1rem 0 0.75rem;
+  background: var(--paper);
+  border-bottom: 1px solid #e3e3e3;
+}
+
+#bar { width: 100%; height: 0.75rem; }
+
+#stats, .hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.actions { margin: 0.6rem 0 0.5rem; display: flex; gap: 0.5rem; }
+
+kbd {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 0 0.25rem;
+}
+
+.cm-editor { margin-top: 1.5rem; }
+.cm-editor.cm-focused { outline: none; }
+.cm-borrowed { background: var(--borrowed); }
+
+/* A redacted paragraph: unreadable, so its wording can't be cribbed. */
+.cm-redacted { background: #000; color: transparent; caret-color: #fff; }
+.cm-redacted .cm-borrowed { background: none; }
+.cm-redacted ::selection { background: #444; }
+.peeking .cm-redacted { background: none; color: var(--ink); }
+.peeking .cm-redacted .cm-borrowed { background: var(--borrowed); }
