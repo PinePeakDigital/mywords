@@ -23,5 +23,8 @@ npm run build   # typecheck + bundle to dist/
 
 ## Deployment
 
-Cloudflare Pages at `mywords.nathanarthur.com`. Build command `npm run build`,
-output directory `dist`. No environment variables, no backend.
+Pushing to `main` deploys to `mywords.nathanarthur.com`, as a Cloudflare Worker
+serving static assets (`.github/workflows/ci.yml`, gated on the tests and a clean
+build). The Worker is configured in `wrangler.jsonc`; the deploy reads the
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. No
+environment variables, no backend.
