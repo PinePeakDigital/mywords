@@ -1,5 +1,10 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import {
+  EditorState,
+  StateEffect,
+  StateField,
+  type Range as CmRange,
+} from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -36,46 +41,115 @@ const borrowed = StateField.define<DecorationSet>({
 /* --- redaction: paints over a paragraph, leaves the text in place --- */
 
 const redactedLine = Decoration.line({ class: "cm-redacted" });
-const toggleRedaction = StateEffect.define<number>();
+const toggleRedaction = StateEffect.define<Range>();
 
-const redactions = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  update(lines, tr) {
+/**
+ * A redaction is stored as the span of text it covers, not as the line it
+ * started on, so it follows that text through edits: split the paragraph and
+ * both halves stay covered, delete the text and the bar goes with it.
+ */
+const redactions = StateField.define<Range[]>({
+  create: () => [],
+  update(spans, tr) {
     if (tr.docChanged) {
-      // Follow the redacted text rather than the offset, so splitting a
-      // paragraph can't slide the bar off and reveal what it was covering.
-      const starts: number[] = [];
-      lines.between(0, tr.startState.doc.length, (from) => {
-        const start = tr.state.doc.lineAt(tr.changes.mapPos(from, 1)).from;
-        if (starts.at(-1) !== start) starts.push(start);
-      });
-      lines = Decoration.set(starts.map((at) => redactedLine.range(at)));
+      spans = spans
+        .map((span) => ({
+          // Bias outwards-in, so text typed at either edge is the writer's own
+          // replacement and stays readable.
+          from: tr.changes.mapPos(span.from, 1),
+          to: tr.changes.mapPos(span.to, -1),
+        }))
+        .filter((span) => span.to > span.from);
     }
     for (const effect of tr.effects) {
       if (!effect.is(toggleRedaction)) continue;
-      const at = effect.value;
-      let redacted = false;
-      lines.between(at, at, () => {
-        redacted = true;
-        return false;
-      });
-      lines = redacted
-        ? lines.update({ filter: (from) => from !== at })
-        : lines.update({ add: [redactedLine.range(at)] });
+      const { from, to } = effect.value;
+      const overlapping = spans.filter((s) => s.from < to && from < s.to);
+      spans = overlapping.length
+        ? spans.filter((s) => !overlapping.includes(s))
+        : [...spans, effect.value];
     }
-    return lines;
+    return spans;
   },
-  provide: (f) => EditorView.decorations.from(f),
 });
 
+const redactionDecorations = EditorView.decorations.compute(
+  [redactions, "doc"],
+  (state) => {
+    const lines = new Set<number>();
+    for (const span of state.field(redactions)) {
+      for (let pos = span.from; ; ) {
+        const line = state.doc.lineAt(pos);
+        lines.add(line.from);
+        if (line.to >= span.to) break;
+        pos = line.to + 1;
+      }
+    }
+    const decorations: CmRange<Decoration>[] = [...lines]
+      .sort((a, b) => a - b)
+      .map((at) => redactedLine.range(at));
+    return Decoration.set(decorations);
+  },
+);
+
+/**
+ * The span of the paragraph containing `pos` — a run of consecutive non-blank
+ * lines, so that text pasted with hard line wraps redacts as one block rather
+ * than one wrapped line at a time.
+ */
+function paragraphAt(state: EditorState, pos: number): Range {
+  const { doc } = state;
+  let first = doc.lineAt(pos);
+  let last = first;
+  if (!first.text.trim()) return { from: first.from, to: first.to };
+  while (first.number > 1 && doc.line(first.number - 1).text.trim()) {
+    first = doc.line(first.number - 1);
+  }
+  while (last.number < doc.lines && doc.line(last.number + 1).text.trim()) {
+    last = doc.line(last.number + 1);
+  }
+  return { from: first.from, to: last.to };
+}
+
+// One span for the whole selection, so a multi-paragraph selection ends up
+// uniformly redacted rather than flipping each paragraph independently.
 const redactParagraph = (view: EditorView) => {
   const { from, to } = view.state.selection.main;
-  const effects = [];
-  for (let n = view.state.doc.lineAt(from).number; n <= view.state.doc.lineAt(to).number; n++) {
-    effects.push(toggleRedaction.of(view.state.doc.line(n).from));
-  }
-  view.dispatch({ effects });
+  view.dispatch({
+    effects: toggleRedaction.of({
+      from: paragraphAt(view.state, from).from,
+      to: paragraphAt(view.state, to).to,
+    }),
+  });
   return true;
+};
+
+/* --- storage: the draft is the only thing the user can't get back --- */
+
+type Saved = { original: string; draft: string };
+
+function restore(): Saved | null {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return null;
+    const { original, draft } = JSON.parse(raw) as Partial<Saved>;
+    if (typeof original !== "string" || typeof draft !== "string") return null;
+    return { original, draft };
+  } catch {
+    // Unreadable or corrupt: fall back to the paste screen rather than
+    // throwing on every load. The bad value is left alone, not deleted.
+    return null;
+  }
+}
+
+const save = (saved: Saved) => {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(saved));
+    return true;
+  } catch {
+    // Quota exceeded, or storage denied. Keep working, but say so.
+    return false;
+  }
 };
 
 /* --- wiring --- */
@@ -91,8 +165,8 @@ function render(view: EditorView) {
   el("stats").textContent =
     `${stats.rewrittenPct}% rewritten · ` +
     `${stats.originalWordsRemaining} of ${stats.originalWordCount} original words remain · ` +
-    `${stats.draftWordCount} words total`;
-  localStorage.setItem(STORE_KEY, JSON.stringify({ original, draft }));
+    `${stats.draftWordCount} words total` +
+    (save({ original, draft }) ? "" : " · NOT SAVED");
 }
 
 // Diffing on every keystroke would put the whole document on the typing path.
@@ -102,15 +176,15 @@ const scheduleRender = (view: EditorView) => {
   pending = setTimeout(() => render(view), 150);
 };
 
-function openEditor(source: string, draft: string) {
-  original = source;
+function openEditor(source: Saved) {
+  original = source.original;
   el("paste").hidden = true;
   el("rewrite").hidden = false;
 
   view = new EditorView({
     parent: el("editor"),
     state: EditorState.create({
-      doc: draft,
+      doc: source.draft,
       extensions: [
         history(),
         keymap.of([
@@ -127,18 +201,24 @@ function openEditor(source: string, draft: string) {
         }),
         borrowed,
         redactions,
-        EditorView.updateListener.of((u) => u.docChanged && scheduleRender(u.view)),
+        redactionDecorations,
+        EditorView.updateListener.of(
+          (u) => u.docChanged && scheduleRender(u.view),
+        ),
+        // Press and hold to peek. CSS :active would be the natural fit, but
+        // CodeMirror's contenteditable mousedown handling suppresses it, so
+        // this is hand-rolled. The release is caught on window, because it
+        // often lands outside the editor and would otherwise be missed,
+        // leaving the peek stuck on.
         EditorView.domEventHandlers({
-          mousedown: (e, v) => {
-            if ((e.target as HTMLElement).closest(".cm-redacted")) {
-              v.dom.classList.add("peeking");
-            }
-          },
-          mouseup: (_, v) => {
-            v.dom.classList.remove("peeking");
-          },
-          mouseleave: (_, v) => {
-            v.dom.classList.remove("peeking");
+          mousedown: (event, view) => {
+            if (!(event.target as HTMLElement).closest(".cm-redacted")) return;
+            view.dom.classList.add("peeking");
+            window.addEventListener(
+              "mouseup",
+              () => view.dom.classList.remove("peeking"),
+              { once: true },
+            );
           },
         }),
       ],
@@ -150,8 +230,8 @@ function openEditor(source: string, draft: string) {
 }
 
 el("start").addEventListener("click", () => {
-  const source = el<HTMLTextAreaElement>("source").value.trim();
-  if (source) openEditor(source, source);
+  const original = el<HTMLTextAreaElement>("original").value.trim();
+  if (original) openEditor({ original, draft: original });
 });
 
 el("redact").addEventListener("click", () => {
@@ -161,9 +241,14 @@ el("redact").addEventListener("click", () => {
 });
 
 el("copy").addEventListener("click", async () => {
-  await navigator.clipboard.writeText(view!.state.doc.toString());
-  el("copy").textContent = "Copied";
-  setTimeout(() => (el("copy").textContent = "Copy all"), 1500);
+  const button = el("copy");
+  try {
+    await navigator.clipboard.writeText(view!.state.doc.toString());
+    button.textContent = "Copied";
+  } catch {
+    button.textContent = "Copy failed";
+  }
+  setTimeout(() => (button.textContent = "Copy all"), 1500);
 });
 
 el("restart").addEventListener("click", () => {
@@ -172,11 +257,5 @@ el("restart").addEventListener("click", () => {
   location.reload();
 });
 
-const saved = localStorage.getItem(STORE_KEY);
-if (saved) {
-  const { original, draft } = JSON.parse(saved) as {
-    original: string;
-    draft: string;
-  };
-  openEditor(original, draft);
-}
+const saved = restore();
+if (saved) openEditor(saved);

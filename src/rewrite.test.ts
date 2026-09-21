@@ -60,3 +60,14 @@ test("a run does not start or end on stray punctuation", () => {
 test("punctuation alone is never borrowed", () => {
   expect(analyze("a. b. c. d.", "z. y. x. w.").ranges).toEqual([]);
 });
+
+test("two borrowed runs either side of a rewrite keep their offsets", () => {
+  // Pins the `pos` bookkeeping across a removed chunk between two runs.
+  const draft = "the quick brown fox went home yesterday the lazy dog slept";
+  const s = analyze(ORIGINAL, draft);
+  expect(s.ranges.map((r) => draft.slice(r.from, r.to))).toEqual([
+    "the quick brown fox",
+    "the lazy dog",
+  ]);
+  expect(s.originalWordsRemaining).toBe(7);
+});
