@@ -114,13 +114,14 @@ function paragraphAt(state: EditorState, pos: number): Range {
 // One span for the whole selection, so a multi-paragraph selection ends up
 // uniformly redacted rather than flipping each paragraph independently.
 const redactParagraph = (view: EditorView) => {
-  const { from, to } = view.state.selection.main;
-  view.dispatch({
-    effects: toggleRedaction.of({
-      from: paragraphAt(view.state, from).from,
-      to: paragraphAt(view.state, to).to,
-    }),
-  });
+  const selection = view.state.selection.main;
+  const span = {
+    from: paragraphAt(view.state, selection.from).from,
+    to: paragraphAt(view.state, selection.to).to,
+  };
+  // A blank line spans nothing, and an empty span could never be toggled back
+  // off: the overlap test below would not even match it against itself.
+  if (span.to > span.from) view.dispatch({ effects: toggleRedaction.of(span) });
   return true;
 };
 
